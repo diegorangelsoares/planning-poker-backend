@@ -129,9 +129,14 @@ function generateRoomId() {
 
 // Função para calcular a média dos votos
 function calculateAverage(votes) {
-    if (!votes.length) return 0;
-    const sum = votes.reduce((a, b) => a + b, 0);
-    return (sum / votes.length).toFixed(2);
+    const numericVotes = votes
+        .map(v => parseFloat(v))
+        .filter(v => !isNaN(v));
+
+    if (numericVotes.length === 0) return '?';
+
+    const sum = numericVotes.reduce((a, b) => a + b, 0);
+    return (sum / numericVotes.length).toFixed(2);
 }
 
 // Inicia o servidor
