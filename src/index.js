@@ -101,6 +101,16 @@ io.on('connection', (socket) => {
         }
     });
 
+    //Funcao para checar se existe a sala
+    socket.on('checkRoomExists', (roomId, callback) => {
+        const room = rooms[roomId];
+        if (room) {
+            callback({ exists: true });
+        } else {
+            callback({ exists: false });
+        }
+    });
+
     // Quando alguém desconecta
     socket.on('disconnect', () => {
         console.log(`Usuário desconectado: ${socket.id}`);
