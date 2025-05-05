@@ -55,16 +55,6 @@ io.on('connection', (socket) => {
             });
         }
     });
-    // socket.on('joinRoom', ({ roomId, userName }) => {
-    //     if (!rooms[roomId]) {
-    //         socket.emit('roomNotFound');
-    //         return;
-    //     }
-    //
-    //     socket.join(roomId);
-    //     rooms[roomId].users.push(userName);
-    //     io.to(roomId).emit('updateUsers', { users: rooms[roomId].users });
-    // });
 
     // Usuário seleciona uma carta
     socket.on('vote', ({ roomId, vote }) => {
