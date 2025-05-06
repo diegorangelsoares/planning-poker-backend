@@ -15,7 +15,7 @@ const server = http.createServer(app);
 // Cria o servidor WebSocket (Socket.IO)
 const io = new Server(server, {
     cors: {
-        origin: '*', // Aceita conexão de qualquer domínio
+        origin: '*',
         methods: ['GET', 'POST']
     }
 });
@@ -49,9 +49,13 @@ io.on('connection', (socket) => {
             room.users[socket.id] = userName;
             socket.join(roomId);
 
-            // Atualiza todos da sala sobre os usuários
+            // Atualiza todos da sala sobre os usuários e quem votou
             io.to(roomId).emit('updateUsers', {
-                users: Object.values(room.users)
+                users: Object.entries(room.users).map(([id, name]) => ({
+                    id,
+                    name,
+                    hasVoted: room.votes[id] !== undefined
+                }))
             });
         }
     });
@@ -61,6 +65,15 @@ io.on('connection', (socket) => {
         const room = rooms[roomId];
         if (room) {
             room.votes[socket.id] = vote;
+
+            // Atualiza status de quem já votou
+            io.to(roomId).emit('updateUsers', {
+                users: Object.entries(room.users).map(([id, name]) => ({
+                    id,
+                    name,
+                    hasVoted: room.votes[id] !== undefined
+                }))
+            });
 
             // Verifica se todos os usuários já votaram
             if (Object.keys(room.votes).length === Object.keys(room.users).length) {
@@ -84,14 +97,24 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Resetar votos
     socket.on('resetVotes', (roomId) => {
         if (rooms[roomId]) {
             rooms[roomId].votes = {};
             io.to(roomId).emit('votesReset');
+
+            // Atualiza novamente os usuários (todos sem votos)
+            io.to(roomId).emit('updateUsers', {
+                users: Object.entries(rooms[roomId].users).map(([id, name]) => ({
+                    id,
+                    name,
+                    hasVoted: false
+                }))
+            });
         }
     });
 
-    //Funcao para checar se existe a sala
+    // Verifica se sala existe
     socket.on('checkRoomExists', (roomId, callback) => {
         const room = rooms[roomId];
         if (room) {
@@ -111,9 +134,12 @@ io.on('connection', (socket) => {
                 delete room.users[socket.id];
                 delete room.votes[socket.id];
 
-                // Atualiza a lista de usuários para a sala
                 io.to(roomId).emit('updateUsers', {
-                    users: Object.values(room.users)
+                    users: Object.entries(room.users).map(([id, name]) => ({
+                        id,
+                        name,
+                        hasVoted: room.votes[id] !== undefined
+                    }))
                 });
 
                 break;
