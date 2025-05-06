@@ -5,8 +5,6 @@ const cors = require('cors');
 
 // Inicializa o app Express
 const app = express();
-
-// Permite acesso CORS de qualquer origem
 app.use(cors());
 
 // Cria o servidor HTTP
@@ -27,11 +25,12 @@ const rooms = {};
 io.on('connection', (socket) => {
     console.log(`Usuário conectado: ${socket.id}`);
 
-    // Criar uma nova sala
-    socket.on('createRoom', (roomName) => {
+    // Criar uma nova sala com nome e sequência de cartas
+    socket.on('createRoom', ({ roomName, sequence }) => {
         const roomId = generateRoomId();
         rooms[roomId] = {
             name: roomName,
+            sequence, // salva a sequência definida pelo criador da sala
             users: {},
             votes: {},
             votingStarted: false,
@@ -39,7 +38,7 @@ io.on('connection', (socket) => {
         };
         socket.join(roomId);
         socket.emit('roomCreated', { roomId });
-        console.log(`Sala criada: ${roomName} (${roomId})`);
+        console.log(`Sala criada: ${roomName} (${roomId}) com sequência: ${sequence}`);
     });
 
     // Entrar em uma sala existente
@@ -49,7 +48,7 @@ io.on('connection', (socket) => {
             room.users[socket.id] = userName;
             socket.join(roomId);
 
-            // Atualiza todos da sala sobre os usuários e quem votou
+            // Atualiza os usuários da sala
             io.to(roomId).emit('updateUsers', {
                 users: Object.entries(room.users).map(([id, name]) => ({
                     id,
@@ -57,6 +56,9 @@ io.on('connection', (socket) => {
                     hasVoted: room.votes[id] !== undefined
                 }))
             });
+
+            // Envia a sequência de cartas para o novo participante
+            socket.emit('setSequence', { sequence: room.sequence });
         }
     });
 
@@ -66,7 +68,6 @@ io.on('connection', (socket) => {
         if (room) {
             room.votes[socket.id] = vote;
 
-            // Atualiza status de quem já votou
             io.to(roomId).emit('updateUsers', {
                 users: Object.entries(room.users).map(([id, name]) => ({
                     id,
@@ -75,7 +76,6 @@ io.on('connection', (socket) => {
                 }))
             });
 
-            // Verifica se todos os usuários já votaram
             if (Object.keys(room.votes).length === Object.keys(room.users).length) {
                 io.to(roomId).emit('allVoted');
             }
@@ -92,20 +92,19 @@ io.on('connection', (socket) => {
             }));
 
             const avg = calculateAverage(Object.values(room.votes));
-
             io.to(roomId).emit('votesRevealed', { votes, average: avg });
         }
     });
 
     // Resetar votos
     socket.on('resetVotes', (roomId) => {
-        if (rooms[roomId]) {
-            rooms[roomId].votes = {};
+        const room = rooms[roomId];
+        if (room) {
+            room.votes = {};
             io.to(roomId).emit('votesReset');
 
-            // Atualiza novamente os usuários (todos sem votos)
             io.to(roomId).emit('updateUsers', {
-                users: Object.entries(rooms[roomId].users).map(([id, name]) => ({
+                users: Object.entries(room.users).map(([id, name]) => ({
                     id,
                     name,
                     hasVoted: false
@@ -114,14 +113,9 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Verifica se sala existe
+    // Verifica se a sala existe
     socket.on('checkRoomExists', (roomId, callback) => {
-        const room = rooms[roomId];
-        if (room) {
-            callback({ exists: true });
-        } else {
-            callback({ exists: false });
-        }
+        callback({ exists: !!rooms[roomId] });
     });
 
     // Quando alguém desconecta
@@ -129,7 +123,6 @@ io.on('connection', (socket) => {
         console.log(`Usuário desconectado: ${socket.id}`);
         for (const roomId in rooms) {
             const room = rooms[roomId];
-
             if (room.users[socket.id]) {
                 delete room.users[socket.id];
                 delete room.votes[socket.id];
@@ -148,19 +141,17 @@ io.on('connection', (socket) => {
     });
 });
 
-// Função para gerar IDs únicos para as salas
+// Gera ID único para a sala
 function generateRoomId() {
     return Math.random().toString(36).substring(2, 8);
 }
 
-// Função para calcular a média dos votos
+// Calcula a média dos votos numéricos
 function calculateAverage(votes) {
     const numericVotes = votes
         .map(v => parseFloat(v))
         .filter(v => !isNaN(v));
-
     if (numericVotes.length === 0) return '?';
-
     const sum = numericVotes.reduce((a, b) => a + b, 0);
     return (sum / numericVotes.length).toFixed(2);
 }
@@ -169,5 +160,5 @@ function calculateAverage(votes) {
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
-    console.log(`vBeta 0.6.0`);
+    console.log(`vBeta 0.7.0`);
 });
