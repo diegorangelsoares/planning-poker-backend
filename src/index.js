@@ -169,4 +169,5 @@ function calculateAverage(votes) {
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`vBeta 0.6.0`);
 });
