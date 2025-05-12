@@ -25,38 +25,69 @@ io.on('connection', (socket) => {
         rooms[roomId] = {
             name: roomName,
             sequence,
-            users: {},
-            votes: {},
-            votingStarted: false,
-            revealed: false
+            users: {},       // socket.id -> userName
+            votes: {},       // socket.id -> vote
+            revealed: false,
+            average: '?'
         };
         socket.join(roomId);
         socket.emit('roomCreated', { roomId });
         console.log(`Sala criada: ${roomName} (${roomId}) com sequência: ${sequence}`);
     });
 
-    socket.on('joinRoom', ({ roomId, userName }) => {
+    socket.on('getRoomData', (roomId) => {
         const room = rooms[roomId];
         if (room) {
-            room.users[socket.id] = userName;
+            socket.emit('roomData', {
+                roomName: room.name,
+                cardOptions: room.sequence,
+                users: formatUsers(room),
+                votes: formatVotes(room),
+                votingOpen: !room.revealed
+            });
+        }
+    });
+
+    socket.on('joinRoom', ({ roomId, userName }, callback) => {
+        const room = rooms[roomId];
+        if (room) {
+            // Verifica se o user já existe (mesmo nome) -> reconexão
+            const existingId = Object.keys(room.users).find(
+                id => room.users[id] === userName
+            );
+
+            if (existingId) {
+                room.users[socket.id] = userName;
+                if (room.votes[existingId]) {
+                    room.votes[socket.id] = room.votes[existingId];
+                }
+                delete room.users[existingId];
+                delete room.votes[existingId];
+            } else {
+                room.users[socket.id] = userName;
+            }
+
             socket.join(roomId);
 
-            // Envia a info da sala para o usuário que entrou
             socket.emit('roomInfo', {
                 roomName: room.name
             });
 
-            // Atualiza os usuários da sala
+            socket.emit('setSequence', { sequence: room.sequence });
+
             io.to(roomId).emit('updateUsers', {
-                users: Object.entries(room.users).map(([id, name]) => ({
-                    id,
-                    name,
-                    hasVoted: room.votes[id] !== undefined
-                }))
+                users: formatUsers(room)
             });
 
-            // Envia a sequência de cartas para o novo participante
-            socket.emit('setSequence', { sequence: room.sequence });
+            if (room.revealed) {
+                socket.emit('votesRevealed', {
+                    votes: formatVotes(room),
+                    average: room.average
+                });
+            }
+
+            // ✅ callback para confirmar entrada no front-end
+            if (callback) callback();
         }
     });
 
@@ -66,11 +97,7 @@ io.on('connection', (socket) => {
             room.votes[socket.id] = vote;
 
             io.to(roomId).emit('updateUsers', {
-                users: Object.entries(room.users).map(([id, name]) => ({
-                    id,
-                    name,
-                    hasVoted: room.votes[id] !== undefined
-                }))
+                users: formatUsers(room)
             });
 
             if (Object.keys(room.votes).length === Object.keys(room.users).length) {
@@ -82,13 +109,12 @@ io.on('connection', (socket) => {
     socket.on('revealVotes', (roomId) => {
         const room = rooms[roomId];
         if (room) {
-            const votes = Object.entries(room.votes).map(([socketId, vote]) => ({
-                user: room.users[socketId],
-                vote
-            }));
-
-            const avg = calculateAverage(Object.values(room.votes));
-            io.to(roomId).emit('votesRevealed', { votes, average: avg });
+            room.revealed = true;
+            room.average = calculateAverage(Object.values(room.votes));
+            io.to(roomId).emit('votesRevealed', {
+                votes: formatVotes(room),
+                average: room.average
+            });
         }
     });
 
@@ -96,14 +122,13 @@ io.on('connection', (socket) => {
         const room = rooms[roomId];
         if (room) {
             room.votes = {};
+            room.revealed = false;
+            room.average = '?';
+
             io.to(roomId).emit('votesReset');
 
             io.to(roomId).emit('updateUsers', {
-                users: Object.entries(room.users).map(([id, name]) => ({
-                    id,
-                    name,
-                    hasVoted: false
-                }))
+                users: formatUsers(room)
             });
         }
     });
@@ -121,11 +146,7 @@ io.on('connection', (socket) => {
                 delete room.votes[socket.id];
 
                 io.to(roomId).emit('updateUsers', {
-                    users: Object.entries(room.users).map(([id, name]) => ({
-                        id,
-                        name,
-                        hasVoted: room.votes[id] !== undefined
-                    }))
+                    users: formatUsers(room)
                 });
 
                 break;
@@ -147,8 +168,23 @@ function calculateAverage(votes) {
     return (sum / numericVotes.length).toFixed(2);
 }
 
+function formatUsers(room) {
+    return Object.entries(room.users).map(([id, name]) => ({
+        id,
+        name,
+        hasVoted: room.votes[id] !== undefined
+    }));
+}
+
+function formatVotes(room) {
+    return Object.entries(room.votes).map(([id, vote]) => ({
+        user: room.users[id],
+        vote
+    }));
+}
+
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
-    console.log(`vBeta 0.7.0`);
+    console.log(`vBeta 0.7.1 - Reconnection Support`);
 });
