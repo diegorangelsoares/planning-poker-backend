@@ -51,7 +51,6 @@ io.on('connection', (socket) => {
     socket.on('joinRoom', ({ roomId, userName }, callback) => {
         const room = rooms[roomId];
         if (room) {
-            // Verifica se o user já existe (mesmo nome) -> reconexão
             const existingId = Object.keys(room.users).find(
                 id => room.users[id] === userName
             );
@@ -86,7 +85,6 @@ io.on('connection', (socket) => {
                 });
             }
 
-            // ✅ callback para confirmar entrada no front-end
             if (callback) callback();
         }
     });
@@ -137,6 +135,37 @@ io.on('connection', (socket) => {
         callback({ exists: !!rooms[roomId] });
     });
 
+    // ✅ Função corrigida para remover participante corretamente
+    socket.on('removeUser', ({ roomId, userName }) => {
+        const room = rooms[roomId];
+        if (!room) {
+            console.error(`Sala ${roomId} não foi encontrada.`);
+            return;
+        }
+
+        const targetSocketId = Object.keys(room.users).find(
+            id => room.users[id] === userName
+        );
+
+        if (targetSocketId) {
+            const targetSocket = io.sockets.sockets.get(targetSocketId);
+
+            if (targetSocket) {
+                targetSocket.emit('removed');
+                setTimeout(() => {
+                    targetSocket.leave(roomId);
+                }, 100);
+            }
+
+            delete room.users[targetSocketId];
+            delete room.votes[targetSocketId];
+
+            updateUsersInRoom(roomId);
+        } else {
+            console.warn(`Usuário ${userName} não encontrado na sala ${roomId}`);
+        }
+    });
+
     socket.on('disconnect', () => {
         console.log(`Usuário desconectado: ${socket.id}`);
         for (const roomId in rooms) {
@@ -154,6 +183,8 @@ io.on('connection', (socket) => {
         }
     });
 });
+
+// ====================== Funções auxiliares ======================
 
 function generateRoomId() {
     return Math.random().toString(36).substring(2, 8);
@@ -181,6 +212,16 @@ function formatVotes(room) {
         user: room.users[id],
         vote
     }));
+}
+
+// ✅ Nova função utilitária
+function updateUsersInRoom(roomId) {
+    const room = rooms[roomId];
+    if (room) {
+        io.to(roomId).emit('updateUsers', {
+            users: formatUsers(room)
+        });
+    }
 }
 
 const PORT = process.env.PORT || 4000;
