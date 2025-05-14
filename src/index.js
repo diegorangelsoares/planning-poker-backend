@@ -17,6 +17,34 @@ const io = new Server(server, {
 
 const rooms = {};
 
+function generateRoomId() {
+    return Math.random().toString(36).substr(2, 6).toUpperCase();
+}
+
+function formatUsers(room) {
+    return Object.entries(room.users).map(([id, name]) => ({
+        name,
+        hasVoted: room.votes.hasOwnProperty(id)
+    }));
+}
+
+function formatVotes(room) {
+    return Object.entries(room.votes).map(([id, vote]) => ({
+        user: room.users[id],
+        vote
+    }));
+}
+
+function calculateAverage(room) {
+    const votes = Object.values(room.votes)
+        .map(v => parseFloat(v))
+        .filter(v => !isNaN(v));
+
+    if (votes.length === 0) return '?';
+    const sum = votes.reduce((acc, val) => acc + val, 0);
+    return (sum / votes.length).toFixed(2);
+}
+
 io.on('connection', (socket) => {
     console.log(`Usuário conectado: ${socket.id}`);
 
@@ -25,14 +53,33 @@ io.on('connection', (socket) => {
         rooms[roomId] = {
             name: roomName,
             sequence,
-            users: {},       // socket.id -> userName
-            votes: {},       // socket.id -> vote
+            users: {},
+            votes: {},
             revealed: false,
-            average: '?'
+            average: '?',
+            createdAt: Date.now() // Adicionado: registro da data de criação
         };
         socket.join(roomId);
         socket.emit('roomCreated', { roomId });
-        console.log(`Sala criada: ${roomName} (${roomId}) com sequência: ${sequence}`);
+        console.log(`Sala criada: ${roomName} (${roomId})`);
+    });
+
+    socket.on('checkRoomExists', (roomId, callback) => {
+        callback({ exists: !!rooms[roomId] });
+    });
+
+    socket.on('joinRoom', ({ roomId, userName }, callback) => {
+        const room = rooms[roomId];
+        if (room) {
+            // Evita duplicidade de usuário
+            const existingId = Object.keys(room.users).find(id => room.users[id] === userName);
+            if (existingId) delete room.users[existingId];
+
+            room.users[socket.id] = userName;
+            socket.join(roomId);
+            io.to(roomId).emit('updateUsers', { users: formatUsers(room) });
+            callback && callback();
+        }
     });
 
     socket.on('getRoomData', (roomId) => {
@@ -48,59 +95,16 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('joinRoom', ({ roomId, userName }, callback) => {
-        const room = rooms[roomId];
-        if (room) {
-            const existingId = Object.keys(room.users).find(
-                id => room.users[id] === userName
-            );
-
-            if (existingId) {
-                room.users[socket.id] = userName;
-                if (room.votes[existingId]) {
-                    room.votes[socket.id] = room.votes[existingId];
-                }
-                delete room.users[existingId];
-                delete room.votes[existingId];
-            } else {
-                room.users[socket.id] = userName;
-            }
-
-            socket.join(roomId);
-
-            socket.emit('roomInfo', {
-                roomName: room.name
-            });
-
-            socket.emit('setSequence', { sequence: room.sequence });
-
-            io.to(roomId).emit('updateUsers', {
-                users: formatUsers(room)
-            });
-
-            if (room.revealed) {
-                socket.emit('votesRevealed', {
-                    votes: formatVotes(room),
-                    average: room.average
-                });
-            }
-
-            if (callback) callback();
-        }
-    });
-
     socket.on('vote', ({ roomId, vote }) => {
         const room = rooms[roomId];
-        if (room) {
+        if (room && room.users[socket.id]) {
             room.votes[socket.id] = vote;
-
-            io.to(roomId).emit('updateUsers', {
-                users: formatUsers(room)
-            });
-
-            if (Object.keys(room.votes).length === Object.keys(room.users).length) {
+            const totalUsers = Object.keys(room.users).length;
+            const totalVotes = Object.keys(room.votes).length;
+            if (totalUsers > 0 && totalUsers === totalVotes) {
                 io.to(roomId).emit('allVoted');
             }
+            io.to(roomId).emit('updateUsers', { users: formatUsers(room) });
         }
     });
 
@@ -108,7 +112,7 @@ io.on('connection', (socket) => {
         const room = rooms[roomId];
         if (room) {
             room.revealed = true;
-            room.average = calculateAverage(Object.values(room.votes));
+            room.average = calculateAverage(room);
             io.to(roomId).emit('votesRevealed', {
                 votes: formatVotes(room),
                 average: room.average
@@ -122,110 +126,67 @@ io.on('connection', (socket) => {
             room.votes = {};
             room.revealed = false;
             room.average = '?';
-
             io.to(roomId).emit('votesReset');
-
-            io.to(roomId).emit('updateUsers', {
-                users: formatUsers(room)
-            });
+            io.to(roomId).emit('updateUsers', { users: formatUsers(room) });
         }
     });
 
-    socket.on('checkRoomExists', (roomId, callback) => {
-        callback({ exists: !!rooms[roomId] });
+    socket.on('setSequence', ({ roomId, sequence }) => {
+        const room = rooms[roomId];
+        if (room) {
+            room.sequence = sequence;
+            io.to(roomId).emit('setSequence', { sequence });
+        }
     });
 
-    // ✅ Função corrigida para remover participante corretamente
     socket.on('removeUser', ({ roomId, userName }) => {
         const room = rooms[roomId];
-        if (!room) {
-            console.error(`Sala ${roomId} não foi encontrada.`);
-            return;
-        }
-
-        const targetSocketId = Object.keys(room.users).find(
-            id => room.users[id] === userName
-        );
-
-        if (targetSocketId) {
-            const targetSocket = io.sockets.sockets.get(targetSocketId);
-
-            if (targetSocket) {
-                targetSocket.emit('removed');
-                setTimeout(() => {
-                    targetSocket.leave(roomId);
-                }, 100);
+        if (room) {
+            const targetId = Object.keys(room.users).find(id => room.users[id] === userName);
+            if (targetId) {
+                delete room.users[targetId];
+                delete room.votes[targetId];
+                io.to(targetId).emit('removed');
+                io.to(roomId).emit('updateUsers', { users: formatUsers(room) });
             }
-
-            delete room.users[targetSocketId];
-            delete room.votes[targetSocketId];
-
-            updateUsersInRoom(roomId);
-        } else {
-            console.warn(`Usuário ${userName} não encontrado na sala ${roomId}`);
         }
     });
 
     socket.on('disconnect', () => {
-        console.log(`Usuário desconectado: ${socket.id}`);
         for (const roomId in rooms) {
             const room = rooms[roomId];
             if (room.users[socket.id]) {
                 delete room.users[socket.id];
                 delete room.votes[socket.id];
+                io.to(roomId).emit('updateUsers', { users: formatUsers(room) });
 
-                io.to(roomId).emit('updateUsers', {
-                    users: formatUsers(room)
-                });
-
+                // Se todos os usuários saíram, exclui a sala
+                if (Object.keys(room.users).length === 0) {
+                    delete rooms[roomId];
+                    console.log(`Sala ${roomId} removida (vazia).`);
+                }
                 break;
             }
         }
     });
 });
 
-// ====================== Funções auxiliares ======================
-
-function generateRoomId() {
-    return Math.random().toString(36).substring(2, 8);
-}
-
-function calculateAverage(votes) {
-    const numericVotes = votes
-        .map(v => parseFloat(v))
-        .filter(v => !isNaN(v));
-    if (numericVotes.length === 0) return '?';
-    const sum = numericVotes.reduce((a, b) => a + b, 0);
-    return (sum / numericVotes.length).toFixed(2);
-}
-
-function formatUsers(room) {
-    return Object.entries(room.users).map(([id, name]) => ({
-        id,
-        name,
-        hasVoted: room.votes[id] !== undefined
-    }));
-}
-
-function formatVotes(room) {
-    return Object.entries(room.votes).map(([id, vote]) => ({
-        user: room.users[id],
-        vote
-    }));
-}
-
-// ✅ Nova função utilitária
-function updateUsersInRoom(roomId) {
-    const room = rooms[roomId];
-    if (room) {
-        io.to(roomId).emit('updateUsers', {
-            users: formatUsers(room)
-        });
+// ⏲️ Intervalo para remover salas com mais de 3 horas
+setInterval(() => {
+    const now = Date.now();
+    const threeHours = 3 * 60 * 60 * 1000;
+    for (const roomId in rooms) {
+        const room = rooms[roomId];
+        if (now - room.createdAt > threeHours) {
+            io.to(roomId).emit('removed'); // avisa quem estiver na sala
+            delete rooms[roomId];
+            console.log(`Sala ${roomId} removida automaticamente (tempo expirado).`);
+        }
     }
-}
+}, 5 * 60 * 1000); // verifica a cada 5 minutos
 
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
-    console.log(`vBeta 0.8.0 - Reconnection Support`);
+    console.log(`vBeta 0.9.0`);
 });
