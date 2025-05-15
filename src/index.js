@@ -3,6 +3,9 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 
+const PORT = process.env.PORT || 4000;
+const VIDA_SALA = process.env.VIDASALA || 1;
+
 const app = express();
 app.use(cors());
 
@@ -19,6 +22,21 @@ const rooms = {};
 
 function generateRoomId() {
     return Math.random().toString(36).substr(2, 6).toUpperCase();
+}
+
+function getDateNow(){
+
+    const now = new Date(Date.now());
+
+    const formatNumber = (n) => n.toString().padStart(2, '0');
+    const day = formatNumber(now.getDate());
+    const month = formatNumber(now.getMonth() + 1); // meses começam do 0
+    const year = now.getFullYear();
+    const hours = formatNumber(now.getHours());
+    const minutes = formatNumber(now.getMinutes());
+    const seconds = formatNumber(now.getSeconds());
+
+    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
 }
 
 function formatUsers(room) {
@@ -61,7 +79,7 @@ io.on('connection', (socket) => {
         };
         socket.join(roomId);
         socket.emit('roomCreated', { roomId });
-        console.log(`Sala criada: ${roomName} (${roomId})`);
+        console.log(`Sala criada por: ${roomName} Id da sala: ${roomId} - ${getDateNow()}`);
     });
 
     socket.on('checkRoomExists', (roomId, callback) => {
@@ -174,7 +192,7 @@ io.on('connection', (socket) => {
 // ⏲️ Intervalo para remover salas com mais de 3 horas
 setInterval(() => {
     const now = Date.now();
-    const threeHours = 3 * 60 * 60 * 1000;
+    const threeHours = VIDA_SALA * 60 * 60 * 1000;
     for (const roomId in rooms) {
         const room = rooms[roomId];
         if (now - room.createdAt > threeHours) {
@@ -185,7 +203,6 @@ setInterval(() => {
     }
 }, 5 * 60 * 1000); // verifica a cada 5 minutos
 
-const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
     console.log(`vBeta 0.9.0`);
