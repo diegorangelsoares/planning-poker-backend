@@ -84,11 +84,12 @@ io.on('connection', (socket) => {
 
     socket.on('getAllRooms', (callback) => {
         const roomList = Object.entries(rooms).map(([roomId, room]) => ({
+            roomId,
             roomName: room.name,
-            cardOptions: room.sequence,
-            users: formatUsers(room),
-            votes: formatVotes(room),
-            votingOpen: !room.revealed
+            users: room.users,
+            sequence: room.sequence,
+            revealed: room.revealed,
+            average: room.average
         }));
         callback(roomList);
     });
@@ -222,10 +223,11 @@ app.get('/api/rooms', (req, res) => {
         revealed: room.revealed,
         createdAt: room.createdAt
     }));
+
     res.json(roomList);
 });
 
 server.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
-    console.log(`vBeta 0.10.0`);
+    console.log(`v 0.10.0`);
 });
