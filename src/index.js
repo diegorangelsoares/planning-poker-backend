@@ -4,7 +4,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 
 const PORT = process.env.PORT || 4000;
-const VIDA_SALA = process.env.VIDASALA || 1;
+const VIDA_SALA = process.env.VIDASALA || 300;
 
 const app = express();
 app.use(cors());
@@ -80,6 +80,14 @@ io.on('connection', (socket) => {
         socket.join(roomId);
         socket.emit('roomCreated', { roomId });
         console.log(`Sala criada por: ${roomName} Id da sala: ${roomId} - ${getDateNow()}`);
+    });
+
+    socket.on('getAllRooms', (callback) => {
+        const roomList = Object.entries(rooms).map(([roomId, room]) => ({
+            roomId,
+            roomName: room.name
+        }));
+        callback(roomList);
     });
 
     socket.on('checkRoomExists', (roomId, callback) => {
@@ -202,6 +210,17 @@ setInterval(() => {
         }
     }
 }, 5 * 60 * 1000); // verifica a cada 5 minutos
+
+app.get('/api/rooms', (req, res) => {
+    const roomList = Object.entries(rooms).map(([roomId, room]) => ({
+        id: roomId,
+        name: room.name,
+        totalUsers: Object.keys(room.users).length,
+        revealed: room.revealed,
+        createdAt: room.createdAt
+    }));
+    res.json(roomList);
+});
 
 server.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
