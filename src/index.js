@@ -4,7 +4,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 
 const PORT = process.env.PORT || 4000;
-const VIDA_SALA = process.env.VIDASALA || 300;
+const VIDA_SALA = process.env.VIDASALA || 3000;
 
 const app = express();
 app.use(cors());
