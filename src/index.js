@@ -95,6 +95,18 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('getAllRooms', (callback) => {
+        const roomList = Object.entries(rooms).map(([roomId, room]) => ({
+            roomId,
+            roomName: room.name,
+            users: room.users,
+            sequence: room.sequence,
+            revealed: room.revealed,
+            average: room.average
+        }));
+        callback(roomList);
+    });
+
     socket.on('getRoomData', (roomId) => {
         const room = rooms[roomId];
         if (room) {
@@ -248,4 +260,5 @@ setInterval(() => {
 
 server.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`v 0.11.0`);
 });
