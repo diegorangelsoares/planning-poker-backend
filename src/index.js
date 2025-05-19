@@ -192,8 +192,8 @@ io.on('connection', (socket) => {
 
                 // Se todos os usuários saíram, exclui a sala
                 if (Object.keys(room.users).length === 0) {
-                    delete rooms[roomId];
-                    console.log(`Sala ${roomId} removida (vazia).`);
+                    //delete rooms[roomId];
+                    //console.log(`Sala ${roomId} removida (vazia).`);
                 }
                 break;
             }
@@ -209,7 +209,7 @@ setInterval(() => {
         const room = rooms[roomId];
         if (now - room.createdAt > threeHours) {
             io.to(roomId).emit('removed'); // avisa quem estiver na sala
-            delete rooms[roomId];
+            //delete rooms[roomId];
             console.log(`Sala ${roomId} removida automaticamente (tempo expirado).`);
         }
     }
