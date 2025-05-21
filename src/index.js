@@ -95,6 +95,24 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('deleteStory', ({ roomId, storyId }) => {
+        const room = rooms[roomId];
+        if (room) {
+            room.historias = room.historias.filter(h => h.id !== storyId);
+            if (room.activeStoryId === storyId) {
+                room.activeStoryId = null;
+                room.votes = {};
+                room.revealed = false;
+                room.average = '?';
+                io.to(roomId).emit('votesReset');
+            }
+            io.to(roomId).emit('storyAdded', {
+                stories: room.historias,
+                activeStoryId: room.activeStoryId
+            });
+        }
+    });
+
     socket.on('getAllRooms', (callback) => {
         const roomList = Object.entries(rooms).map(([roomId, room]) => ({
             roomId,
@@ -102,7 +120,8 @@ io.on('connection', (socket) => {
             users: room.users,
             sequence: room.sequence,
             revealed: room.revealed,
-            average: room.average
+            average: room.average,
+            historias: room.historias || []
         }));
         callback(roomList);
     });
@@ -116,8 +135,8 @@ io.on('connection', (socket) => {
                 users: formatUsers(room),
                 votes: formatVotes(room),
                 votingOpen: !room.revealed,
-                stories: room.historias,
-                activeStoryId: room.activeStoryId
+                historias: room.historias || [],
+                activeStoryId: room.activeStoryId || null
             });
         }
     });
@@ -133,10 +152,8 @@ io.on('connection', (socket) => {
             if (existingId) delete room.users[existingId];
             room.users[socket.id] = userName;
             socket.join(roomId);
-
             io.to(roomId).emit('updateUsers', { users: formatUsers(room) });
 
-            // ✅ Envia dados da sala completos, incluindo histórias e história ativa
             socket.emit('roomData', {
                 roomName: room.name,
                 cardOptions: room.sequence,
@@ -235,35 +252,10 @@ io.on('connection', (socket) => {
                 delete room.users[socket.id];
                 delete room.votes[socket.id];
                 io.to(roomId).emit('updateUsers', { users: formatUsers(room) });
-                // if (Object.keys(room.users).length === 0) {
-                //     delete rooms[roomId];
-                //     console.log(`Sala ${roomId} removida (vazia).`);
-                // }
                 break;
             }
         }
     });
-
-    socket.on('deleteStory', ({ roomId, storyId }) => {
-        const room = rooms[roomId];
-        if (room) {
-            room.historias = room.historias.filter(h => h.id !== storyId);
-            if (room.activeStoryId === storyId) {
-                room.activeStoryId = null;
-                room.votes = {};
-                room.revealed = false;
-                room.average = '?';
-                io.to(roomId).emit('votesReset');
-            }
-            io.to(roomId).emit('storyAdded', {
-                stories: room.historias,
-                activeStoryId: room.activeStoryId
-            });
-        }
-    });
-
-
-
 });
 
 setInterval(() => {
@@ -281,5 +273,5 @@ setInterval(() => {
 
 server.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
-    console.log(`v 0.12.0`);
+    console.log(`v 0.13.0`);
 });
