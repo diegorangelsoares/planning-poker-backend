@@ -136,7 +136,7 @@ io.on('connection', (socket) => {
                 users: formatUsers(room),
                 votes: formatVotes(room),
                 votingOpen: !room.revealed,
-                historias: room.historias || [],
+                stories: room.historias || [],
                 activeStoryId: room.activeStoryId || null
             });
         }
@@ -161,7 +161,7 @@ io.on('connection', (socket) => {
                 users: formatUsers(room),
                 votes: formatVotes(room),
                 votingOpen: !room.revealed,
-                historias: room.historias || [],
+                stories: room.historias || [],
                 activeStoryId: room.activeStoryId || null
             });
 
@@ -274,5 +274,5 @@ setInterval(() => {
 
 server.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
-    console.log(`v 0.13.0`);
+    console.log(`v 0.13.1`);
 });
