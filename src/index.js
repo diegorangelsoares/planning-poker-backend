@@ -250,8 +250,8 @@ io.on('connection', (socket) => {
         for (const roomId in rooms) {
             const room = rooms[roomId];
             if (room.users[socket.id]) {
-                delete room.users[socket.id];
-                delete room.votes[socket.id];
+                // delete room.users[socket.id];
+                // delete room.votes[socket.id];
                 io.to(roomId).emit('updateUsers', { users: formatUsers(room) });
                 break;
             }
