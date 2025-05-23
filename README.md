@@ -17,3 +17,6 @@ src/index.js
 
 ### `npm start`
 
+## Tests
+
+### `npm test`
