@@ -30,7 +30,7 @@ setInterval(() => {
     for (const roomId in rooms) {
         const room = rooms[roomId];
         if (now - room.createdAt > maxAge) {
-            io.to(roomId).emit('removed');
+            //io.to(roomId).emit('removed');
             console.log(`Sala ${roomId} removida automaticamente.`);
         }
     }
